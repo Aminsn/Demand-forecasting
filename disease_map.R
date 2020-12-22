@@ -1,5 +1,8 @@
 library(SpatialEpiApp)
-library(rgdal) 
+library(rgdal)
+library(ggplot2)
+library(INLA) 
+library(spdep)
 library(SpatialEpi)
 library(tidyr)
 library(sf)
@@ -58,4 +61,40 @@ map_sf <- gather(map_sf, year, SIR, paste0("SIR.", 1968:1988))
 
 map_sf$year <- as.integer(substring(map_sf$year, 5, 8))
 
+#Modelling:
+nb <- poly2nb(map)
 
+nb2INLA("map.adj", nb)
+
+g <- inla.read.graph(filename = "map.adj")
+
+d$idarea <- as.numeric(d$county) 
+d$idarea1 <- d$idarea
+d$idtime <- 1 + d$year - min(d$year)
+
+formula <- Y ~ f(idarea, model = "bym", graph = g) + f(idarea1, idtime, model = "iid") + idtime
+
+res <- inla(formula,
+            family = "poisson", data = d, E = E, control.predictor = list(compute = TRUE)
+            )
+
+round(res$summary.fixed, 4)
+
+d$RR <- res$summary.fitted.values[, "mean"]
+d$LL <- res$summary.fitted.values[, "0.025quant"] 
+d$UL <- res$summary.fitted.values[, "0.975quant"]
+
+#Mapping the results:
+
+map_sf <- merge(
+  map_sf, d,
+  by.x = c("NAME", "year"), by.y = c("county", "year")
+)
+
+
+ggplot(map_sf) + geom_sf(aes(fill = RR)) + facet_wrap(~year, dir = "h", ncol = 7) + ggtitle("RR") + theme_bw() +
+  theme(
+    axis.text.x = element_blank(), axis.text.y = element_blank(), axis.ticks = element_blank()
+  )+ scale_fill_gradient2(
+    midpoint = 1, low = "blue", mid = "white", high = "red"
+  )
