@@ -1,5 +1,6 @@
 library(SpatialEpiApp)
 library(rgdal)
+library(dplyr)
 library(ggplot2)
 library(INLA) 
 library(spdep)
